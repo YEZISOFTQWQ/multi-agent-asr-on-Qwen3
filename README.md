@@ -14,10 +14,10 @@
 ## 仓库边界
 
 ```text
-/home/jiangsongbo/qwen3-asr       Qwen3-ASR 底层源码
-/home/jiangsongbo/multi-agent-asr 本项目源码
-/home/jiangsongbo/data/multi-agent-asr 运行数据与 SQLite
-/home/jiangsongbo/runs/multi-agent-asr 实验输出与日志
+./qwen3-asr       Qwen3-ASR 底层源码
+./multi-agent-asr 本项目源码
+./data/multi-agent-asr 运行数据与 SQLite
+./runs/multi-agent-asr 实验输出与日志
 ```
 
 模型权重由 Hugging Face 缓存管理，不提交到本仓库。
@@ -27,14 +27,14 @@
 首次初始化推荐从已经验证过的 `qwen3-asr` 环境克隆：
 
 ```bash
-cd /home/jiangsongbo/multi-agent-asr
+cd ./multi-agent-asr
 bash scripts/bootstrap_wsl.sh
 ```
 
 以后进入环境：
 
 ```bash
-source /home/jiangsongbo/miniforge3/etc/profile.d/conda.sh
+source ./miniforge3/etc/profile.d/conda.sh
 conda activate multi-agent-asr
 ```
 
@@ -86,13 +86,13 @@ curl -X PUT http://127.0.0.1:8000/v1/profiles/speaker_001 \
   }'
 ```
 
-转写 WSL 中的本地音频：
+转写本地音频：
 
 ```bash
 curl -X POST http://127.0.0.1:8000/v1/transcriptions \
   -H 'Content-Type: application/json' \
   -d '{
-    "audio_path": "/home/jiangsongbo/data/multi-agent-asr/raw/example.wav",
+    "audio_path": "./data/multi-agent-asr/raw/example.wav",
     "session_id": "demo-session",
     "speaker_hint": "speaker_001",
     "scene_hint": "汽车驾驶舱",
@@ -100,13 +100,11 @@ curl -X POST http://127.0.0.1:8000/v1/transcriptions \
   }'
 ```
 
-第一次真实转写会加载或下载模型，因此耗时明显长于健康检查。
-
 ## 命令行转写
 
 ```bash
 multi-agent-asr transcribe \
-  /home/jiangsongbo/data/multi-agent-asr/raw/example.wav \
+  ./data/multi-agent-asr/raw/example.wav \
   --session-id demo-session \
   --speaker speaker_001 \
   --language Chinese
