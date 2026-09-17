@@ -4,5 +4,7 @@ port: 8000
 asr_model_path: Qwen/Qwen3-ASR-0.6B
 device_map: cuda:0
 dtype: bfloat16
+checkpoint_database_path: /home/jiangsongbo/data/multi-agent-asr/state/checkpoints.sqlite3
 recent_utterance_limit: 5
 max_context_chars: 2000
+max_asr_retries: 1

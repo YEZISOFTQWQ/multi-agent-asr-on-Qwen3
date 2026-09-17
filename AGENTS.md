@@ -1,6 +1,6 @@
 # Development instructions
 
-- Keep Qwen3-ASR model code in `/home/jiangsongbo/qwen3-asr`; do not copy it into this repository.
+- Keep Qwen3-ASR model code in `./qwen3-asr`; do not copy it into this repository.
 - Agents exchange typed objects from `schemas/models.py`.
 - New model integrations belong in `services/`; orchestration decisions belong in `agents/`.
 - Do not commit audio, model weights, checkpoints, databases, logs, secrets, or generated transcripts.

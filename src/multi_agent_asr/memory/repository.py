@@ -1,3 +1,5 @@
+"""使用 SQLite 持久化说话人画像和会话转写。"""
+
 from __future__ import annotations
 
 import asyncio
@@ -10,18 +12,24 @@ from multi_agent_asr.schemas import ASRResult, SpeakerProfile
 
 
 class SqliteMemoryRepository:
+    """持久化说话人画像和按会话组织的转写历史。"""
+
     def __init__(self, database_path: Path) -> None:
+        """保存业务记忆数据库路径。"""
         self.database_path = database_path
 
     async def initialize(self) -> None:
+        """在线程池中创建或迁移记忆表。"""
         await asyncio.to_thread(self._initialize_sync)
 
     def _connect(self) -> sqlite3.Connection:
+        """创建启用名称列访问的短生命周期 SQLite 连接。"""
         connection = sqlite3.connect(self.database_path)
         connection.row_factory = sqlite3.Row
         return connection
 
     def _initialize_sync(self) -> None:
+        """同步创建画像、转写和查询索引。"""
         self.database_path.parent.mkdir(parents=True, exist_ok=True)
         with self._connect() as connection:
             connection.executescript(
@@ -54,11 +62,13 @@ class SqliteMemoryRepository:
             )
 
     async def get_profile(self, speaker_id: str | None) -> SpeakerProfile | None:
+        """异步读取说话人画像。"""
         if not speaker_id:
             return None
         return await asyncio.to_thread(self._get_profile_sync, speaker_id)
 
     def _get_profile_sync(self, speaker_id: str) -> SpeakerProfile | None:
+        """读取一行画像并还原 JSON 字段。"""
         with self._connect() as connection:
             row = connection.execute(
                 "SELECT * FROM speaker_profiles WHERE speaker_id = ?", (speaker_id,)
@@ -77,9 +87,11 @@ class SqliteMemoryRepository:
         )
 
     async def upsert_profile(self, profile: SpeakerProfile) -> SpeakerProfile:
+        """异步新增或更新说话人画像。"""
         return await asyncio.to_thread(self._upsert_profile_sync, profile)
 
     def _upsert_profile_sync(self, profile: SpeakerProfile) -> SpeakerProfile:
+        """在一个事务中写入完整画像快照。"""
         updated_at = datetime.now(UTC)
         with self._connect() as connection:
             connection.execute(
@@ -111,24 +123,30 @@ class SqliteMemoryRepository:
         return profile.model_copy(update={"updated_at": updated_at})
 
     async def recent_utterances(self, session_id: str, limit: int) -> list[str]:
+        """返回会话中最近的已验证转写，顺序从旧到新。"""
         return await asyncio.to_thread(self._recent_utterances_sync, session_id, limit)
 
     def _recent_utterances_sync(self, session_id: str, limit: int) -> list[str]:
+        """查询最近可信文本并恢复自然对话顺序。"""
         with self._connect() as connection:
             rows = connection.execute(
                 """
                 SELECT text FROM utterances
+                -- 未通过校验的文本不能成为下一轮识别依据。
                 WHERE session_id = ? AND verified = 1
                 ORDER BY id DESC LIMIT ?
                 """,
                 (session_id, limit),
             ).fetchall()
+        # SQL 为高效 LIMIT 使用倒序；返回前恢复自然对话顺序。
         return [row["text"] for row in reversed(rows)]
 
     async def append_utterance(self, result: ASRResult) -> None:
+        """异步追加一次最终转写。"""
         await asyncio.to_thread(self._append_utterance_sync, result)
 
     def _append_utterance_sync(self, result: ASRResult) -> None:
+        """在一个事务中写入最终转写及验证状态。"""
         with self._connect() as connection:
             connection.execute(
                 """

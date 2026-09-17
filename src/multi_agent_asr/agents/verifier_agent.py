@@ -1,3 +1,5 @@
+"""对候选转写执行轻量、确定性的质量检查。"""
+
 from __future__ import annotations
 
 import re
@@ -6,7 +8,10 @@ from multi_agent_asr.schemas import TranscriptCandidate, VerificationResult
 
 
 class VerifierAgent:
+    """检查空结果、控制字符和明显的异常重复。"""
+
     async def verify(self, candidate: TranscriptCandidate) -> VerificationResult:
+        """返回确定性的校验结果和可用于重试的告警代码。"""
         warnings: list[str] = []
         text = candidate.text.strip()
 

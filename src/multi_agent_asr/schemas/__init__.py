@@ -1,7 +1,10 @@
+"""Agent 之间共享的数据模型公共导出。"""
+
 from .models import (
     AppliedCorrection,
     ASRResult,
     AudioInfo,
+    NodeRunRecord,
     SceneObservation,
     SpeakerObservation,
     SpeakerProfile,
@@ -15,6 +18,7 @@ __all__ = [
     "ASRResult",
     "AppliedCorrection",
     "AudioInfo",
+    "NodeRunRecord",
     "SceneObservation",
     "SpeakerObservation",
     "SpeakerProfile",

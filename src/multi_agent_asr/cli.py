@@ -1,3 +1,5 @@
+"""Multi-Agent ASR 的命令行入口。"""
+
 from __future__ import annotations
 
 import argparse
@@ -12,6 +14,7 @@ from multi_agent_asr.schemas import TranscriptionInput
 
 
 def _parser() -> argparse.ArgumentParser:
+    """构建 init-db、serve 和 transcribe 子命令。"""
     parser = argparse.ArgumentParser(description="Multi-Agent ASR command line")
     commands = parser.add_subparsers(dest="command", required=True)
 
@@ -30,28 +33,37 @@ def _parser() -> argparse.ArgumentParser:
 
 
 async def _initialize() -> None:
+    """初始化数据库和 Checkpoint 表后释放资源。"""
     orchestrator, _ = build_orchestrator(get_settings())
-    await orchestrator.initialize()
+    try:
+        await orchestrator.initialize()
+    finally:
+        await orchestrator.close()
 
 
 async def _transcribe(args: argparse.Namespace) -> None:
+    """执行一次 CLI 转写并以 JSON 输出结构化结果。"""
     orchestrator, _ = build_orchestrator(get_settings())
-    await orchestrator.initialize()
-    result = await orchestrator.transcribe(
-        TranscriptionInput(
-            audio_path=args.audio_path,
-            session_id=args.session_id,
-            speaker_hint=args.speaker,
-            scene_hint=args.scene,
-            language=args.language,
-            explicit_context=args.context,
-            return_time_stamps=args.timestamps,
+    try:
+        await orchestrator.initialize()
+        result = await orchestrator.transcribe(
+            TranscriptionInput(
+                audio_path=args.audio_path,
+                session_id=args.session_id,
+                speaker_hint=args.speaker,
+                scene_hint=args.scene,
+                language=args.language,
+                explicit_context=args.context,
+                return_time_stamps=args.timestamps,
+            )
         )
-    )
-    print(json.dumps(result.model_dump(mode="json"), ensure_ascii=False, indent=2))
+        print(json.dumps(result.model_dump(mode="json"), ensure_ascii=False, indent=2))
+    finally:
+        await orchestrator.close()
 
 
 def main() -> None:
+    """解析命令行参数并分派到对应子命令。"""
     args = _parser().parse_args()
     settings = get_settings()
     if args.command == "init-db":

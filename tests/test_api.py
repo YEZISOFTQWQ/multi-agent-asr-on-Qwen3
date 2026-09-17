@@ -1,15 +1,21 @@
+"""验证 API 生命周期、健康检查和运行记录查询。"""
+
 import httpx
 
 from multi_agent_asr.api.app import app
 
 
 async def test_health_does_not_load_model() -> None:
+    """确认启动 API 不加载模型，未知 run_id 返回 404。"""
     async with app.router.lifespan_context(app):
         transport = httpx.ASGITransport(app=app)
         async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
             response = await client.get("/health")
+            missing_run = await client.get("/v1/runs/does-not-exist")
 
     assert response.status_code == 200
     body = response.json()
     assert body["status"] == "ok"
     assert body["model_loaded"] is False
+    assert body["orchestration"] == "langgraph"
+    assert missing_run.status_code == 404

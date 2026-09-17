@@ -1,3 +1,5 @@
+"""验证 SQLite 画像和已校验会话历史的持久化。"""
+
 from pathlib import Path
 
 from multi_agent_asr.memory import SqliteMemoryRepository
@@ -5,6 +7,7 @@ from multi_agent_asr.schemas import ASRResult, SpeakerProfile
 
 
 async def test_profile_and_verified_history_round_trip(tmp_path: Path) -> None:
+    """确认画像可往返，并且上下文历史只读取已验证文本。"""
     repository = SqliteMemoryRepository(tmp_path / "memory.sqlite3")
     await repository.initialize()
 
