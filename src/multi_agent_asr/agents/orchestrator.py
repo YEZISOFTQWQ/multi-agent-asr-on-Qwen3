@@ -8,6 +8,7 @@ from multi_agent_asr.agents.profile_update_agent import ProfileUpdateAgent
 from multi_agent_asr.agents.qwen_asr_agent import QwenASRAgent
 from multi_agent_asr.agents.scene_agent import SceneAgent
 from multi_agent_asr.agents.speaker_agent import SpeakerAgent
+from multi_agent_asr.agents.terminology_agent import TerminologyAgent
 from multi_agent_asr.agents.verifier_agent import VerifierAgent
 from multi_agent_asr.schemas import ASRResult, TranscriptionInput
 
@@ -21,6 +22,7 @@ class ASROrchestrator:
         scene_agent: SceneAgent,
         memory_agent: MemoryAgent,
         asr_agent: QwenASRAgent,
+        terminology_agent: TerminologyAgent,
         verifier_agent: VerifierAgent,
         profile_update_agent: ProfileUpdateAgent,
     ) -> None:
@@ -29,6 +31,7 @@ class ASROrchestrator:
         self.scene_agent = scene_agent
         self.memory_agent = memory_agent
         self.asr_agent = asr_agent
+        self.terminology_agent = terminology_agent
         self.verifier_agent = verifier_agent
         self.profile_update_agent = profile_update_agent
 
@@ -54,6 +57,8 @@ class ASROrchestrator:
             language=request.language,
             return_time_stamps=request.return_time_stamps,
         )
+        profile = await self.memory_agent.get_profile(speaker.speaker_id)
+        candidate = await self.terminology_agent.apply(candidate, profile)
         verification = await self.verifier_agent.verify(candidate)
 
         result = ASRResult(
@@ -66,6 +71,7 @@ class ASROrchestrator:
             warnings=verification.warnings,
             context_used=candidate.context_used,
             time_stamps=candidate.time_stamps,
+            applied_corrections=candidate.applied_corrections,
         )
         await self.profile_update_agent.record(result)
         return result

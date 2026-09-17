@@ -7,6 +7,7 @@ from multi_agent_asr.agents.profile_update_agent import ProfileUpdateAgent
 from multi_agent_asr.agents.qwen_asr_agent import QwenASRAgent
 from multi_agent_asr.agents.scene_agent import SceneAgent
 from multi_agent_asr.agents.speaker_agent import SpeakerAgent
+from multi_agent_asr.agents.terminology_agent import TerminologyAgent
 from multi_agent_asr.agents.verifier_agent import VerifierAgent
 from multi_agent_asr.config import Settings
 from multi_agent_asr.memory import ContextBuilder, SqliteMemoryRepository
@@ -28,6 +29,7 @@ def build_orchestrator(settings: Settings) -> tuple[ASROrchestrator, QwenASRServ
         scene_agent=SceneAgent(),
         memory_agent=memory_agent,
         asr_agent=QwenASRAgent(qwen_service),
+        terminology_agent=TerminologyAgent(),
         verifier_agent=VerifierAgent(),
         profile_update_agent=ProfileUpdateAgent(repository),
     )

@@ -1,4 +1,5 @@
 from .models import (
+    AppliedCorrection,
     ASRResult,
     AudioInfo,
     SceneObservation,
@@ -12,6 +13,7 @@ from .models import (
 
 __all__ = [
     "ASRResult",
+    "AppliedCorrection",
     "AudioInfo",
     "SceneObservation",
     "SpeakerObservation",

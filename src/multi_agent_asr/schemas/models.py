@@ -41,6 +41,12 @@ class SpeakerProfile(BaseModel):
     updated_at: datetime | None = None
 
 
+class AppliedCorrection(BaseModel):
+    original: str
+    replacement: str
+    occurrences: int = Field(ge=1)
+
+
 class TranscriptionInput(BaseModel):
     audio_path: str
     session_id: str = "default"
@@ -56,6 +62,7 @@ class TranscriptCandidate(BaseModel):
     language: str | None = None
     context_used: str = ""
     time_stamps: list[TimeStamp] = Field(default_factory=list)
+    applied_corrections: list[AppliedCorrection] = Field(default_factory=list)
 
 
 class VerificationResult(BaseModel):
@@ -74,3 +81,4 @@ class ASRResult(BaseModel):
     warnings: list[str] = Field(default_factory=list)
     context_used: str = ""
     time_stamps: list[TimeStamp] = Field(default_factory=list)
+    applied_corrections: list[AppliedCorrection] = Field(default_factory=list)

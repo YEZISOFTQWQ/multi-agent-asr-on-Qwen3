@@ -10,6 +10,7 @@
   -> MemoryAgent 查询画像和会话历史
   -> ContextBuilder 生成受长度约束的 context
   -> QwenASRAgent 调用 Qwen3-ASR
+  -> TerminologyAgent 应用已确认的精确术语纠错
   -> VerifierAgent 检查结果
   -> ProfileUpdateAgent 写入可信历史
 ```
@@ -27,6 +28,7 @@
 - SpeakerAgent 的基础实现只使用调用方传入的 `speaker_hint`。
 - SceneAgent 的基础实现只使用调用方传入的 `scene_hint`。
 - VerifierAgent 执行空结果、控制字符和异常重复检查。
+- TerminologyAgent 只读取画像中的显式纠错字典，使用单次最长匹配替换并记录修改明细。
 - Qwen3-ASR 是唯一会加载大模型的组件，并且按需加载。
 
 ## 后续扩展

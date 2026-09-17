@@ -10,6 +10,7 @@ from multi_agent_asr.agents.profile_update_agent import ProfileUpdateAgent
 from multi_agent_asr.agents.qwen_asr_agent import QwenASRAgent
 from multi_agent_asr.agents.scene_agent import SceneAgent
 from multi_agent_asr.agents.speaker_agent import SpeakerAgent
+from multi_agent_asr.agents.terminology_agent import TerminologyAgent
 from multi_agent_asr.agents.verifier_agent import VerifierAgent
 from multi_agent_asr.memory import ContextBuilder, SqliteMemoryRepository
 from multi_agent_asr.schemas import SpeakerProfile, TranscriptCandidate, TranscriptionInput
@@ -29,7 +30,7 @@ class FakeQwenService:
         assert "Qwen3-ASR" in context
         assert "汽车驾驶舱" in context
         return TranscriptCandidate(
-            text="我们继续讨论 Qwen3-ASR。",
+            text="我们继续讨论千问三。",
             language=language or "Chinese",
             context_used=context,
         )
@@ -47,6 +48,7 @@ async def test_orchestrator_builds_context_and_records_verified_result(tmp_path:
         scene_agent=SceneAgent(),
         memory_agent=memory_agent,
         asr_agent=QwenASRAgent(FakeQwenService()),  # type: ignore[arg-type]
+        terminology_agent=TerminologyAgent(),
         verifier_agent=VerifierAgent(),
         profile_update_agent=ProfileUpdateAgent(repository),
     )
@@ -57,6 +59,7 @@ async def test_orchestrator_builds_context_and_records_verified_result(tmp_path:
             accent="四川口音",
             accent_confidence=0.8,
             frequent_terms=["Qwen3-ASR"],
+            corrections={"千问三": "Qwen3-ASR"},
         )
     )
 
@@ -72,4 +75,7 @@ async def test_orchestrator_builds_context_and_records_verified_result(tmp_path:
 
     assert result.verified is True
     assert result.speaker_id == "speaker_001"
+    assert result.text == "我们继续讨论Qwen3-ASR。"
+    assert result.applied_corrections[0].original == "千问三"
+    assert result.applied_corrections[0].replacement == "Qwen3-ASR"
     assert await repository.recent_utterances("session-1", limit=5) == [result.text]

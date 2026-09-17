@@ -7,6 +7,7 @@
 - 懒加载 Qwen3-ASR，启动 API 时不会立即占用 GPU。
 - 使用 SQLite 保存说话人画像和最近转写。
 - 把说话人、场景、常用术语、历史纠错和最近对话整理成 `context`。
+- 术语纠错智能体会应用说话人画像中已经确认的精确纠错，并返回纠错审计记录。
 - 提供 FastAPI 健康检查、画像管理和转写接口。
 - 说话人与场景智能体已经定义稳定接口，当前基础实现接受上游提示，后续可接入 pyannote、SpeechBrain、AST 或 PANNs。
 - 校验智能体当前执行基础完整性检查，后续可以接入 ForcedAligner 和二次解码。
@@ -44,7 +45,7 @@ conda activate multi-agent-asr
 cp .env.example .env
 ```
 
-默认模型为 `Qwen/Qwen3-ASR-1.7B`。如需时间戳，在 `.env` 中设置：
+默认模型为 `Qwen/Qwen3-ASR-0.6B`，适合 8 GB 显存的本地开发。如需时间戳，在 `.env` 中设置：
 
 ```text
 MASR_FORCED_ALIGNER_MODEL_PATH=Qwen/Qwen3-ForcedAligner-0.6B
@@ -116,5 +117,6 @@ multi-agent-asr transcribe \
 - `src/multi_agent_asr/services/qwen_service.py`：Qwen3-ASR 模型封装。
 - `src/multi_agent_asr/memory/repository.py`：SQLite 持久化。
 - `src/multi_agent_asr/memory/context_builder.py`：上下文生成策略。
+- `src/multi_agent_asr/agents/terminology_agent.py`：应用画像中的已确认术语纠错。
 - `src/multi_agent_asr/api/app.py`：HTTP API。
 - `docs/architecture.md`：架构与扩展约束。

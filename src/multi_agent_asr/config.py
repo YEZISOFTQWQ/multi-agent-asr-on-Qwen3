@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     host: str = "127.0.0.1"
     port: int = 8000
 
-    asr_model_path: str = "Qwen/Qwen3-ASR-1.7B"
+    asr_model_path: str = "Qwen/Qwen3-ASR-0.6B"
     forced_aligner_model_path: str | None = None
     device_map: str = "cuda:0"
     dtype: str = "bfloat16"

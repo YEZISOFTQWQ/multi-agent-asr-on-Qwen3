@@ -1,7 +1,7 @@
 environment: production
 host: 0.0.0.0
 port: 8000
-asr_model_path: Qwen/Qwen3-ASR-1.7B
+asr_model_path: Qwen/Qwen3-ASR-0.6B
 device_map: cuda:0
 dtype: bfloat16
 recent_utterance_limit: 5
