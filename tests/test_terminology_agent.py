@@ -1,8 +1,11 @@
+"""验证术语纠错的最长匹配和非级联行为。"""
+
 from multi_agent_asr.agents.terminology_agent import TerminologyAgent
 from multi_agent_asr.schemas import SpeakerProfile, TranscriptCandidate
 
 
 async def test_applies_longest_confirmed_corrections_without_cascading() -> None:
+    """确认最长匹配优先且替换结果不会再次参与替换。"""
     candidate = TranscriptCandidate(text="千问三和千问三")
     profile = SpeakerProfile(
         speaker_id="speaker_001",
@@ -23,6 +26,7 @@ async def test_applies_longest_confirmed_corrections_without_cascading() -> None
 
 
 async def test_returns_original_candidate_without_profile() -> None:
+    """确认没有画像时保持原候选对象。"""
     candidate = TranscriptCandidate(text="保持原文")
 
     corrected = await TerminologyAgent().apply(candidate, None)

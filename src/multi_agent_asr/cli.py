@@ -1,3 +1,5 @@
+"""Multi-Agent ASR 的命令行入口。"""
+
 from __future__ import annotations
 
 import argparse
@@ -12,6 +14,7 @@ from multi_agent_asr.schemas import TranscriptionInput
 
 
 def _parser() -> argparse.ArgumentParser:
+    """构建 init-db、serve 和 transcribe 子命令。"""
     parser = argparse.ArgumentParser(description="Multi-Agent ASR command line")
     commands = parser.add_subparsers(dest="command", required=True)
 
@@ -30,6 +33,7 @@ def _parser() -> argparse.ArgumentParser:
 
 
 async def _initialize() -> None:
+    """初始化数据库和 Checkpoint 表后释放资源。"""
     orchestrator, _ = build_orchestrator(get_settings())
     try:
         await orchestrator.initialize()
@@ -38,6 +42,7 @@ async def _initialize() -> None:
 
 
 async def _transcribe(args: argparse.Namespace) -> None:
+    """执行一次 CLI 转写并以 JSON 输出结构化结果。"""
     orchestrator, _ = build_orchestrator(get_settings())
     try:
         await orchestrator.initialize()
@@ -58,6 +63,7 @@ async def _transcribe(args: argparse.Namespace) -> None:
 
 
 def main() -> None:
+    """解析命令行参数并分派到对应子命令。"""
     args = _parser().parse_args()
     settings = get_settings()
     if args.command == "init-db":

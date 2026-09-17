@@ -1,3 +1,5 @@
+"""集中装配 Agent、服务、仓库和 LangGraph 编排器。"""
+
 from __future__ import annotations
 
 from multi_agent_asr.agents.audio_agent import AudioAgent
@@ -16,9 +18,12 @@ from multi_agent_asr.services import QwenASRService
 
 
 def build_orchestrator(settings: Settings) -> tuple[ASROrchestrator, QwenASRService]:
+    """根据配置装配一套共享依赖并返回编排器与模型服务。"""
     settings.ensure_runtime_directories()
+    # 业务记忆与节点审计共享一个 SQLite 文件，但由不同仓库维护各自表。
     repository = SqliteMemoryRepository(settings.database_path)
     run_repository = SqliteRunRepository(settings.database_path)
+    # 所有请求共享同一个服务实例，避免在同一进程重复加载模型权重。
     qwen_service = QwenASRService(settings)
     memory_agent = MemoryAgent(
         repository=repository,

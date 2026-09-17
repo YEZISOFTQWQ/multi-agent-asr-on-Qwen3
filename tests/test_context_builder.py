@@ -1,8 +1,11 @@
+"""验证上下文内容、安全提示和字符预算。"""
+
 from multi_agent_asr.memory import ContextBuilder
 from multi_agent_asr.schemas import SceneObservation, SpeakerProfile
 
 
 def test_context_contains_profile_scene_history_and_safety_instruction() -> None:
+    """确认各类线索和音频优先约束都进入上下文。"""
     profile = SpeakerProfile(
         speaker_id="speaker_001",
         display_name="张三",
@@ -28,6 +31,7 @@ def test_context_contains_profile_scene_history_and_safety_instruction() -> None
 
 
 def test_context_respects_character_budget() -> None:
+    """确认过长上下文会被严格截断。"""
     context = ContextBuilder(max_chars=120).build(
         profile=None,
         scene=SceneObservation(label="unknown"),

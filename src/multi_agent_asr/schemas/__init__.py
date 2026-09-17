@@ -1,3 +1,5 @@
+"""Agent 之间共享的数据模型公共导出。"""
+
 from .models import (
     AppliedCorrection,
     ASRResult,

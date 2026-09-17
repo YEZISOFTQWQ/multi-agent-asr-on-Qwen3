@@ -1,3 +1,5 @@
+"""声明并编译 Multi-Agent ASR 的 LangGraph 拓扑。"""
+
 from __future__ import annotations
 
 from langgraph.checkpoint.base import BaseCheckpointSaver
@@ -12,6 +14,7 @@ def build_asr_workflow(
     nodes: ASRGraphNodes,
     checkpointer: BaseCheckpointSaver,
 ):
+    """声明并行分析、条件重试和结果持久化的状态图。"""
     builder = StateGraph(ASRGraphState)
     builder.add_node("audio", nodes.audio)
     builder.add_node("speaker", nodes.speaker)
@@ -24,6 +27,7 @@ def build_asr_workflow(
     builder.add_node("finalize", nodes.finalize)
     builder.add_node("persist", nodes.persist)
 
+    # 三个只读分析节点从 START 并行启动；列表边构成全部完成后的汇合屏障。
     builder.add_edge(START, "audio")
     builder.add_edge(START, "speaker")
     builder.add_edge(START, "scene")
@@ -31,6 +35,7 @@ def build_asr_workflow(
     builder.add_edge("context", "asr")
     builder.add_edge("asr", "terminology")
     builder.add_edge("terminology", "verify")
+    # 校验结果是唯一控制循环的条件，retry 节点负责递增有界计数。
     builder.add_conditional_edges(
         "verify",
         route_after_verification,

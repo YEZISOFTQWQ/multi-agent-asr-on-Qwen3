@@ -1,3 +1,5 @@
+"""使用 SQLite 记录每个 LangGraph 节点的执行情况。"""
+
 from __future__ import annotations
 
 import asyncio
@@ -13,20 +15,25 @@ from multi_agent_asr.schemas import NodeRunRecord
 
 
 class SqliteRunRepository:
-    """Persist one auditable record for every LangGraph node execution."""
+    """为每次 LangGraph 节点执行保存一条可审计记录。"""
 
     def __init__(self, database_path: Path) -> None:
+        """保存节点运行记录所在的数据库路径。"""
         self.database_path = database_path
 
     async def initialize(self) -> None:
+        """在线程池中创建节点记录表和索引。"""
         await asyncio.to_thread(self._initialize_sync)
 
     def _connect(self) -> sqlite3.Connection:
+        """创建允许并发任务等待写锁的 SQLite 连接。"""
+        # 并行图节点可能同时落库，timeout 允许短暂等待 SQLite 写锁。
         connection = sqlite3.connect(self.database_path, timeout=30)
         connection.row_factory = sqlite3.Row
         return connection
 
     def _initialize_sync(self) -> None:
+        """同步创建节点记录表。"""
         self.database_path.parent.mkdir(parents=True, exist_ok=True)
         with self._connect() as connection:
             connection.executescript(
@@ -59,6 +66,7 @@ class SqliteRunRepository:
         attempt: int,
         details: dict[str, object] | None = None,
     ) -> int:
+        """插入 running 状态并返回节点记录 ID。"""
         return await asyncio.to_thread(
             self._start_node_sync,
             run_id,
@@ -76,6 +84,7 @@ class SqliteRunRepository:
         attempt: int,
         details: dict[str, object],
     ) -> int:
+        """同步持久化节点开始时间和静态明细。"""
         with self._connect() as connection:
             cursor = connection.execute(
                 """
@@ -95,6 +104,7 @@ class SqliteRunRepository:
             return int(cursor.lastrowid)
 
     async def finish_node(self, node_run_id: int, duration_ms: float) -> None:
+        """把节点记录更新为成功并保存耗时。"""
         await asyncio.to_thread(
             self._finish_node_sync,
             node_run_id,
@@ -109,6 +119,7 @@ class SqliteRunRepository:
         duration_ms: float,
         error: BaseException,
     ) -> None:
+        """把节点记录更新为失败并保存异常摘要。"""
         await asyncio.to_thread(
             self._finish_node_sync,
             node_run_id,
@@ -124,6 +135,7 @@ class SqliteRunRepository:
         duration_ms: float,
         error: str | None,
     ) -> None:
+        """同步完成节点记录的终态更新。"""
         with self._connect() as connection:
             connection.execute(
                 """
@@ -141,9 +153,11 @@ class SqliteRunRepository:
             )
 
     async def list_node_runs(self, run_id: str) -> list[NodeRunRecord]:
+        """按写入顺序返回一次运行的所有节点记录。"""
         return await asyncio.to_thread(self._list_node_runs_sync, run_id)
 
     def _list_node_runs_sync(self, run_id: str) -> list[NodeRunRecord]:
+        """查询记录并把 SQLite 行转换为强类型模型。"""
         with self._connect() as connection:
             rows = connection.execute(
                 "SELECT * FROM node_runs WHERE run_id = ? ORDER BY id",
@@ -178,6 +192,7 @@ class SqliteRunRepository:
         attempt: int,
         details: dict[str, object] | None = None,
     ) -> AsyncIterator[None]:
+        """在异步上下文中自动记录节点成功、失败和耗时。"""
         node_run_id = await self.start_node(
             run_id=run_id,
             thread_id=thread_id,
@@ -185,10 +200,12 @@ class SqliteRunRepository:
             attempt=attempt,
             details=details,
         )
+        # perf_counter 不受系统时钟校准影响，适合计算节点耗时。
         started = perf_counter()
         try:
             yield
         except BaseException as error:
+            # 取消等控制流异常也要留下失败记录，随后原样抛给 LangGraph。
             await self.fail_node(node_run_id, (perf_counter() - started) * 1000, error)
             raise
         else:
