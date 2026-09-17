@@ -7,7 +7,7 @@ from fastapi import FastAPI, HTTPException, Request
 from multi_agent_asr import __version__
 from multi_agent_asr.bootstrap import build_orchestrator
 from multi_agent_asr.config import get_settings
-from multi_agent_asr.schemas import ASRResult, SpeakerProfile, TranscriptionInput
+from multi_agent_asr.schemas import ASRResult, NodeRunRecord, SpeakerProfile, TranscriptionInput
 
 
 @asynccontextmanager
@@ -18,7 +18,10 @@ async def lifespan(app: FastAPI):
     app.state.settings = settings
     app.state.orchestrator = orchestrator
     app.state.qwen_service = qwen_service
-    yield
+    try:
+        yield
+    finally:
+        await orchestrator.close()
 
 
 app = FastAPI(
@@ -39,6 +42,7 @@ async def health(request: Request) -> dict[str, object]:
         "model": settings.asr_model_path,
         "model_loaded": qwen_service.is_loaded,
         "device_map": settings.device_map,
+        "orchestration": "langgraph",
     }
 
 
@@ -50,6 +54,14 @@ async def transcribe(payload: TranscriptionInput, request: Request) -> ASRResult
         raise HTTPException(status_code=404, detail=str(error)) from error
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
+
+
+@app.get("/v1/runs/{run_id}", response_model=list[NodeRunRecord])
+async def get_run(run_id: str, request: Request) -> list[NodeRunRecord]:
+    records = await request.app.state.orchestrator.list_node_runs(run_id)
+    if not records:
+        raise HTTPException(status_code=404, detail="Run not found")
+    return records
 
 
 @app.get("/v1/profiles/{speaker_id}", response_model=SpeakerProfile)

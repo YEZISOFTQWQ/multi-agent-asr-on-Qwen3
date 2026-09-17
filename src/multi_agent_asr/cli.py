@@ -31,24 +31,30 @@ def _parser() -> argparse.ArgumentParser:
 
 async def _initialize() -> None:
     orchestrator, _ = build_orchestrator(get_settings())
-    await orchestrator.initialize()
+    try:
+        await orchestrator.initialize()
+    finally:
+        await orchestrator.close()
 
 
 async def _transcribe(args: argparse.Namespace) -> None:
     orchestrator, _ = build_orchestrator(get_settings())
-    await orchestrator.initialize()
-    result = await orchestrator.transcribe(
-        TranscriptionInput(
-            audio_path=args.audio_path,
-            session_id=args.session_id,
-            speaker_hint=args.speaker,
-            scene_hint=args.scene,
-            language=args.language,
-            explicit_context=args.context,
-            return_time_stamps=args.timestamps,
+    try:
+        await orchestrator.initialize()
+        result = await orchestrator.transcribe(
+            TranscriptionInput(
+                audio_path=args.audio_path,
+                session_id=args.session_id,
+                speaker_hint=args.speaker,
+                scene_hint=args.scene,
+                language=args.language,
+                explicit_context=args.context,
+                return_time_stamps=args.timestamps,
+            )
         )
-    )
-    print(json.dumps(result.model_dump(mode="json"), ensure_ascii=False, indent=2))
+        print(json.dumps(result.model_dump(mode="json"), ensure_ascii=False, indent=2))
+    finally:
+        await orchestrator.close()
 
 
 def main() -> None:

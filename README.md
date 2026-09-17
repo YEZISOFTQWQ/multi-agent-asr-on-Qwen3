@@ -1,149 +1,168 @@
 # Multi-Agent ASR
 
-这是一个建立在 Qwen3-ASR 之上的多智能体语音识别开发仓库。Qwen3-ASR 负责转写；本项目负责音频检查、说话人线索、场景线索、历史记忆、上下文构建、结果校验和 API 编排。
+这是一个建立在 Qwen3-ASR 之上的多智能体语音识别项目。Qwen3-ASR 负责转写，LangGraph 负责工作流编排，项目中的专职 Agent 负责音频检查、说话人和场景线索、历史记忆、术语修正、结果校验与记录。
+
+## 框架选型
+
+项目使用现有的 [LangGraph](https://github.com/langchain-ai/langgraph) 状态图框架，不再由 `ASROrchestrator` 手写流程控制。LangGraph 提供：
+
+- 并行节点和汇合依赖；
+- 根据校验结果选择结束或重试；
+- SQLite Checkpoint，可保存每一步图状态；
+- 稳定的节点边界，便于以后替换 Agent 实现。
+
+LangGraph 本身不提供识别模型，也不要求 Anthropic、OpenAI 或其他云端模型密钥。官方教程中的 Anthropic Key 只用于调用 Claude 示例。本项目的 `asr` 节点调用本地 `QwenASRService`，图编排、Checkpoint 和测试均可离线运行。
 
 ## 当前能力
 
-- 懒加载 Qwen3-ASR，启动 API 时不会立即占用 GPU。
-- 使用 SQLite 保存说话人画像和最近转写。
-- 把说话人、场景、常用术语、历史纠错和最近对话整理成 `context`。
-- 术语纠错智能体会应用说话人画像中已经确认的精确纠错，并返回纠错审计记录。
-- 提供 FastAPI 健康检查、画像管理和转写接口。
-- 说话人与场景智能体已经定义稳定接口，当前基础实现接受上游提示，后续可接入 pyannote、SpeechBrain、AST 或 PANNs。
-- 校验智能体当前执行基础完整性检查，后续可以接入 ForcedAligner 和二次解码。
+- 使用 LangGraph 编排完整 ASR 状态图。
+- 并行执行音频检查、说话人分析和场景分析。
+- 懒加载 Qwen3-ASR，启动 API 和运行单元测试时不会加载模型权重。
+- 使用 SQLite 保存说话人画像、已验证的最近转写和节点运行记录。
+- 使用 SQLite Checkpoint 保存每次 LangGraph 执行状态。
+- 把说话人、场景、常用术语、历史纠错和最近对话整理为受长度约束的 `context`。
+- 对空文本、控制字符和异常重复执行校验；失败后可携带定向提示再次调用 ASR。
+- 对说话人画像中已经确认的术语执行精确修正，并返回纠错审计记录。
+- 通过 `run_id` 查询本次请求中每个节点的状态、耗时、attempt 和错误。
 
-## 多智能体架构
-
-项目采用“中心编排器 + 专职 Agent + 共享记忆”的结构。每个 Agent 只负责一个明确任务，通过 `schemas/models.py` 中的结构化对象交换数据。Qwen3-ASR 作为核心转写 Agent，其他 Agent 负责补充声学线索、历史上下文、术语修正和结果校验。
+## 多智能体状态图
 
 ```mermaid
 flowchart TD
-    Client[CLI / FastAPI 请求] --> Orchestrator[ASROrchestrator]
+    Client[CLI / FastAPI] --> O[ASROrchestrator]
+    O --> Start((START))
 
-    Orchestrator -->|并行| Audio[AudioAgent<br/>检查音频]
-    Orchestrator -->|并行| Speaker[SpeakerAgent<br/>获取说话人线索]
-    Orchestrator -->|并行| Scene[SceneAgent<br/>获取环境线索]
+    Start --> Audio[AudioAgent<br/>检查音频]
+    Start --> Speaker[SpeakerAgent<br/>说话人线索]
+    Start --> Scene[SceneAgent<br/>环境线索]
 
-    Speaker --> Memory[MemoryAgent]
-    Scene --> Memory
-    DB[(SQLite<br/>说话人画像与会话历史)] <--> Memory
-    Memory --> Context[ContextBuilder<br/>生成受长度约束的 context]
+    Audio --> Context[MemoryAgent + ContextBuilder]
+    Speaker --> Context
+    Scene --> Context
+    Memory[(SQLite<br/>画像、历史、节点记录)] <--> Context
 
-    Audio --> ASR[QwenASRAgent]
-    Context --> ASR
-    ASR --> Service[QwenASRService<br/>懒加载并调用 Qwen3-ASR-0.6B]
-    Service --> Candidate[TranscriptCandidate]
+    Context --> ASR[QwenASRAgent]
+    ASR --> Service[QwenASRService<br/>本地 Qwen3-ASR-0.6B]
+    Service --> Terms[TerminologyAgent]
+    Terms --> Verify[VerifierAgent]
 
-    Candidate --> Terms[TerminologyAgent<br/>应用已确认的术语纠错]
-    Terms --> Verify[VerifierAgent<br/>检查空结果、控制字符和异常重复]
-    Verify --> Result[ASRResult]
-    Result --> Update[ProfileUpdateAgent]
-    Update --> DB
-    Result --> Client
+    Verify -->|通过或达到上限| Finalize[生成 ASRResult]
+    Verify -->|可重试| Retry[写入重试提示并增加 attempt]
+    Retry --> ASR
+
+    Finalize --> Persist[ProfileUpdateAgent]
+    Persist --> Memory
+    Persist --> End((END))
+    End --> Client
+
+    Checkpoint[(SQLite Checkpoint)] <--> O
 ```
 
-音频检查、说话人分析和场景分析会并行执行。Qwen3-ASR 是当前唯一使用 GPU 的大模型，其他 Agent 默认在 CPU 上执行。模型服务使用异步锁串行进入单个模型实例，避免同一张 GPU 重复加载权重。
+`AudioAgent`、`SpeakerAgent` 和 `SceneAgent` 从 `START` 同时启动。LangGraph 等三个节点全部完成后才进入 `context` 节点。`verify` 节点通过条件边决定进入 `finalize`，或经过 `retry` 回到 `asr`。`MASR_MAX_ASR_RETRIES` 限制额外识别次数，防止无限循环。
 
-### Agent 职责
+每次请求都会生成新的 `run_id`，Checkpoint 的 `thread_id` 为：
 
-| 组件 | 输入 | 输出 | 当前实现 |
+```text
+{session_id}:{run_id}
+```
+
+这样同一会话的不同请求不会意外读取上一次请求的图状态。
+
+## Agent 与服务职责
+
+| 组件 | 输入 | 输出 | 职责 |
 |---|---|---|---|
-| `ASROrchestrator` | `TranscriptionInput` | `ASRResult` | 调度整个转写流程并传递共享状态 |
-| `AudioAgent` | 音频路径 | `AudioInfo` | 检查文件，读取时长、采样率和通道数 |
-| `SpeakerAgent` | 音频、`speaker_hint` | `SpeakerObservation` | 使用调用方提供的说话人提示；预留声纹模型接口 |
-| `SceneAgent` | 音频、`scene_hint` | `SceneObservation` | 使用调用方提供的环境提示；预留环境分类模型接口 |
-| `MemoryAgent` | 会话 ID、说话人、场景 | 画像、最近对话、`context` | 查询 SQLite 并调用 `ContextBuilder` |
-| `QwenASRAgent` | 音频、`context`、语言 | `TranscriptCandidate` | 通过 `QwenASRService` 调用 Qwen3-ASR-0.6B |
-| `TerminologyAgent` | 候选文本、说话人画像 | 修正后的候选文本 | 对确认过的纠错词典执行单次最长匹配，并记录 `applied_corrections` |
+| `ASROrchestrator` | `TranscriptionInput` | `ASRResult` | 创建运行 ID、调用 LangGraph、管理 Checkpoint 生命周期 |
+| `AudioAgent` | 音频路径 | `AudioInfo` | 检查文件并读取时长、采样率和通道数 |
+| `SpeakerAgent` | 音频、`speaker_hint` | `SpeakerObservation` | 当前使用显式提示，预留声纹模型接口 |
+| `SceneAgent` | 音频、`scene_hint` | `SceneObservation` | 当前使用显式提示，预留声学场景分类接口 |
+| `MemoryAgent` | 会话、说话人、场景 | 画像和 `context` | 查询长期画像与短期会话历史 |
+| `QwenASRAgent` | 音频、语言、`context` | `TranscriptCandidate` | 调用统一的 Qwen3-ASR 服务接口 |
+| `TerminologyAgent` | 候选文本、画像 | 修正后的候选文本 | 应用已经确认的最长术语匹配 |
 | `VerifierAgent` | 候选文本 | `VerificationResult` | 检查空文本、控制字符和异常重复 |
-| `ProfileUpdateAgent` | 最终结果 | SQLite 记录 | 保存转写；后续检索只使用通过校验的历史 |
+| `ProfileUpdateAgent` | `ASRResult` | SQLite 记录 | 保存结果，通过校验的文本可进入后续上下文 |
+| `QwenASRService` | ASR 参数 | `TranscriptCandidate` | 懒加载模型、限制 GPU 并发并转换官方返回格式 |
+| `SqliteRunRepository` | 节点事件 | `NodeRunRecord` | 记录节点状态、耗时、attempt 和错误 |
 
-`QwenASRService` 属于模型服务层，负责模型懒加载、设备和精度配置、GPU 并发控制以及官方结果格式转换。Agent 层只依赖它提供的统一转写接口，因此以后可以增加 Whisper、FunASR 或远程 ASR 服务，而不改动编排器的数据流。
+Qwen3-ASR 是当前唯一使用 GPU 的大模型。其他 Agent 的基础实现运行在 CPU 上，增加 Agent 不会复制一份 Qwen 权重。后续接入说话人或场景模型时，应按显存和内存预算选择轻量模型并保持懒加载。
 
-### 一次请求的执行顺序
+## 两类 SQLite 状态
 
-1. API 或 CLI 创建 `TranscriptionInput`。
-2. `AudioAgent`、`SpeakerAgent` 和 `SceneAgent` 并行分析输入。
-3. `MemoryAgent` 根据说话人画像和当前会话生成 `context`。
-4. `QwenASRAgent` 调用 Qwen3-ASR-0.6B 生成原始候选文本。
-5. `TerminologyAgent` 应用画像中已经人工确认的精确纠错。
-6. `VerifierAgent` 检查结果并生成告警。
-7. `ProfileUpdateAgent` 保存本次结果；通过校验的文本可以成为下一次请求的短期历史。
-8. API 返回文本、语言、场景、校验状态、实际使用的 `context`、时间戳和纠错记录。
+| 数据 | 默认位置 | 用途 |
+|---|---|---|
+| 业务记忆与节点记录 | `~/data/multi-agent-asr/state/memory.sqlite3` | 画像、已验证历史、`node_runs` |
+| LangGraph Checkpoint | `~/data/multi-agent-asr/state/checkpoints.sqlite3` | 图状态、节点版本和恢复信息 |
 
-### 共享数据结构
+数据库、模型权重、音频、日志和生成结果都被排除在 Git 提交之外。
 
-| 数据结构 | 用途 |
-|---|---|
-| `TranscriptionInput` | 音频路径、会话 ID、说话人和场景提示、语言、显式上下文 |
-| `SpeakerProfile` | 说话人名称、口音、常用术语、确认过的纠错和常见环境 |
-| `TranscriptCandidate` | Qwen3-ASR 产生并在 Agent 间传递的候选结果 |
-| `AppliedCorrection` | 记录原词、替换词和出现次数，保证纠错过程可审计 |
-| `VerificationResult` | 校验是否通过、告警信息和可选重试上下文 |
-| `ASRResult` | API 和 CLI 最终返回的统一结果 |
-
-### 代码目录映射
+## 代码结构
 
 ```text
 src/multi_agent_asr/
 ├── agents/
-│   ├── orchestrator.py          # 中心编排器
-│   ├── audio_agent.py           # 音频检查
-│   ├── speaker_agent.py         # 说话人线索
-│   ├── scene_agent.py           # 环境线索
-│   ├── memory_agent.py          # 画像和会话记忆
-│   ├── qwen_asr_agent.py        # Qwen3-ASR Agent 接口
-│   ├── terminology_agent.py     # 术语纠错
-│   ├── verifier_agent.py        # 结果校验
-│   └── profile_update_agent.py  # 历史写入
+│   ├── orchestrator.py          # LangGraph 生命周期与统一入口
+│   ├── audio_agent.py
+│   ├── speaker_agent.py
+│   ├── scene_agent.py
+│   ├── memory_agent.py
+│   ├── qwen_asr_agent.py
+│   ├── terminology_agent.py
+│   ├── verifier_agent.py
+│   └── profile_update_agent.py
+├── graph/
+│   ├── state.py                 # ASRGraphState
+│   ├── nodes.py                 # Agent 到图节点的适配
+│   ├── routing.py               # 校验后的条件路由
+│   └── workflow.py              # StateGraph 拓扑与编译
+├── observability/
+│   └── repository.py            # 节点级 SQLite 运行记录
 ├── services/
-│   └── qwen_service.py          # 模型加载和推理适配
+│   └── qwen_service.py          # Qwen3-ASR 懒加载与推理适配
 ├── memory/
-│   ├── repository.py            # SQLite 持久化
-│   └── context_builder.py       # context 构建策略
+│   ├── repository.py            # 画像与会话历史
+│   └── context_builder.py       # 上下文构建策略
 ├── schemas/
-│   └── models.py                # Agent 共享数据契约
+│   └── models.py                # Agent 共享的数据契约
 ├── api/
-│   └── app.py                   # FastAPI 接口
+│   └── app.py                   # FastAPI 接口与资源释放
 ├── bootstrap.py                 # 依赖装配
 ├── config.py                    # 环境配置
 └── cli.py                       # 命令行入口
 ```
 
-## 仓库边界
+## 环境安装
 
-```text
-./qwen3-asr       Qwen3-ASR 底层源码
-./multi-agent-asr 本项目源码
-./data/multi-agent-asr 运行数据与 SQLite
-./runs/multi-agent-asr 实验输出与日志
-```
-
-模型权重由 Hugging Face 缓存管理，不提交到本仓库。
-
-## 环境
-
-首次初始化推荐从已经验证过的 `qwen3-asr` 环境克隆：
+首次初始化可从已验证的 Qwen3-ASR 环境克隆：
 
 ```bash
-cd ./multi-agent-asr
+cd /home/jiangsongbo/multi-agent-asr
 bash scripts/bootstrap_wsl.sh
 ```
 
-以后进入环境：
+进入环境并安装当前项目依赖：
 
 ```bash
-source ./miniforge3/etc/profile.d/conda.sh
+source /home/jiangsongbo/miniforge3/etc/profile.d/conda.sh
 conda activate multi-agent-asr
+python -m pip install -e ".[dev]"
 ```
 
-配置文件：
+创建本地配置：
 
 ```bash
 cp .env.example .env
 ```
 
-默认模型为 `Qwen/Qwen3-ASR-0.6B`，适合 8 GB 显存的本地开发。如需时间戳，在 `.env` 中设置：
+关键配置：
+
+```text
+MASR_ASR_MODEL_PATH=Qwen/Qwen3-ASR-0.6B
+MASR_DATABASE_PATH=/home/jiangsongbo/data/multi-agent-asr/state/memory.sqlite3
+MASR_CHECKPOINT_DATABASE_PATH=/home/jiangsongbo/data/multi-agent-asr/state/checkpoints.sqlite3
+MASR_MAX_ASR_RETRIES=1
+```
+
+如需时间戳，可设置 ForcedAligner：
 
 ```text
 MASR_FORCED_ALIGNER_MODEL_PATH=Qwen/Qwen3-ForcedAligner-0.6B
@@ -153,14 +172,23 @@ MASR_FORCED_ALIGNER_MODEL_PATH=Qwen/Qwen3-ForcedAligner-0.6B
 
 ```bash
 multi-agent-asr init-db
+python -m ruff check src tests scripts/smoke_test.py
 python -m pytest
-python -m ruff check src tests
+python scripts/smoke_test.py
 ```
+
+测试中的 ASR 使用假服务，不下载或加载模型权重。
 
 ## 启动 API
 
 ```bash
 multi-agent-asr serve
+```
+
+接口文档：
+
+```text
+http://127.0.0.1:8000/docs
 ```
 
 健康检查：
@@ -169,7 +197,9 @@ multi-agent-asr serve
 curl http://127.0.0.1:8000/health
 ```
 
-写入说话人画像：
+响应中的 `model_loaded: false` 表示 API 启动没有提前加载 Qwen3-ASR。
+
+## 写入说话人画像
 
 ```bash
 curl -X PUT http://127.0.0.1:8000/v1/profiles/speaker_001 \
@@ -185,13 +215,13 @@ curl -X PUT http://127.0.0.1:8000/v1/profiles/speaker_001 \
   }'
 ```
 
-转写本地音频：
+## 发起转写
 
 ```bash
 curl -X POST http://127.0.0.1:8000/v1/transcriptions \
   -H 'Content-Type: application/json' \
   -d '{
-    "audio_path": "./data/multi-agent-asr/raw/example.wav",
+    "audio_path": "/home/jiangsongbo/data/multi-agent-asr/raw/example.wav",
     "session_id": "demo-session",
     "speaker_hint": "speaker_001",
     "scene_hint": "汽车驾驶舱",
@@ -199,22 +229,27 @@ curl -X POST http://127.0.0.1:8000/v1/transcriptions \
   }'
 ```
 
+响应会包含 `run_id`。使用它查询节点运行明细：
+
+```bash
+curl http://127.0.0.1:8000/v1/runs/返回的run_id
+```
+
 ## 命令行转写
 
 ```bash
 multi-agent-asr transcribe \
-  ./data/multi-agent-asr/raw/example.wav \
+  /home/jiangsongbo/data/multi-agent-asr/raw/example.wav \
   --session-id demo-session \
   --speaker speaker_001 \
+  --scene 汽车驾驶舱 \
   --language Chinese
 ```
 
-## 开发入口
+## 扩展原则
 
-- `src/multi_agent_asr/agents/orchestrator.py`：整体流程。
-- `src/multi_agent_asr/services/qwen_service.py`：Qwen3-ASR 模型封装。
-- `src/multi_agent_asr/memory/repository.py`：SQLite 持久化。
-- `src/multi_agent_asr/memory/context_builder.py`：上下文生成策略。
-- `src/multi_agent_asr/agents/terminology_agent.py`：应用画像中的已确认术语纠错。
-- `src/multi_agent_asr/api/app.py`：HTTP API。
-- `docs/architecture.md`：架构与扩展约束。
+- 新的模型适配放入 `services/`，图的流程判断放入 `graph/`。
+- Agent 之间只交换 `schemas/models.py` 中定义的结构化对象。
+- 上下文可帮助消歧，但不能覆盖音频证据。
+- 说话人、场景、校验或新 ASR 实现应替换对应节点依赖，无需重写整个状态图。
+- 新增条件分支时同时增加路由测试、Checkpoint 测试和节点记录断言。

@@ -27,8 +27,12 @@ class Settings(BaseSettings):
     data_root: Path = Path.home() / "data" / "multi-agent-asr"
     run_root: Path = Path.home() / "runs" / "multi-agent-asr"
     database_path: Path = Path.home() / "data" / "multi-agent-asr" / "state" / "memory.sqlite3"
+    checkpoint_database_path: Path = (
+        Path.home() / "data" / "multi-agent-asr" / "state" / "checkpoints.sqlite3"
+    )
     recent_utterance_limit: int = 5
     max_context_chars: int = 2000
+    max_asr_retries: int = 1
 
     def ensure_runtime_directories(self) -> None:
         for path in (
@@ -37,6 +41,7 @@ class Settings(BaseSettings):
             self.data_root / "annotations",
             self.data_root / "manifests",
             self.database_path.parent,
+            self.checkpoint_database_path.parent,
             self.run_root / "logs",
             self.run_root / "outputs",
             self.run_root / "checkpoints",

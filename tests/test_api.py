@@ -8,8 +8,11 @@ async def test_health_does_not_load_model() -> None:
         transport = httpx.ASGITransport(app=app)
         async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
             response = await client.get("/health")
+            missing_run = await client.get("/v1/runs/does-not-exist")
 
     assert response.status_code == 200
     body = response.json()
     assert body["status"] == "ok"
     assert body["model_loaded"] is False
+    assert body["orchestration"] == "langgraph"
+    assert missing_run.status_code == 404

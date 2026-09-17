@@ -11,12 +11,14 @@ from multi_agent_asr.agents.terminology_agent import TerminologyAgent
 from multi_agent_asr.agents.verifier_agent import VerifierAgent
 from multi_agent_asr.config import Settings
 from multi_agent_asr.memory import ContextBuilder, SqliteMemoryRepository
+from multi_agent_asr.observability import SqliteRunRepository
 from multi_agent_asr.services import QwenASRService
 
 
 def build_orchestrator(settings: Settings) -> tuple[ASROrchestrator, QwenASRService]:
     settings.ensure_runtime_directories()
     repository = SqliteMemoryRepository(settings.database_path)
+    run_repository = SqliteRunRepository(settings.database_path)
     qwen_service = QwenASRService(settings)
     memory_agent = MemoryAgent(
         repository=repository,
@@ -32,5 +34,8 @@ def build_orchestrator(settings: Settings) -> tuple[ASROrchestrator, QwenASRServ
         terminology_agent=TerminologyAgent(),
         verifier_agent=VerifierAgent(),
         profile_update_agent=ProfileUpdateAgent(repository),
+        checkpoint_database_path=settings.checkpoint_database_path,
+        run_repository=run_repository,
+        max_retries=settings.max_asr_retries,
     )
     return orchestrator, qwen_service

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -75,6 +76,7 @@ class ASRResult(BaseModel):
     text: str
     language: str | None = None
     session_id: str
+    run_id: str = ""
     speaker_id: str | None = None
     scene: str | None = None
     verified: bool
@@ -82,3 +84,17 @@ class ASRResult(BaseModel):
     context_used: str = ""
     time_stamps: list[TimeStamp] = Field(default_factory=list)
     applied_corrections: list[AppliedCorrection] = Field(default_factory=list)
+
+
+class NodeRunRecord(BaseModel):
+    id: int
+    run_id: str
+    thread_id: str
+    node_name: str
+    status: Literal["running", "succeeded", "failed"]
+    started_at: datetime
+    finished_at: datetime | None = None
+    duration_ms: float | None = None
+    attempt: int = Field(ge=1)
+    details: dict[str, Any] = Field(default_factory=dict)
+    error: str | None = None
