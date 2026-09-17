@@ -7,14 +7,12 @@
 
 ## 框架选型
 
-项目使用现有的 [LangGraph](https://github.com/langchain-ai/langgraph) 状态图框架，不再由 `ASROrchestrator` 手写流程控制。LangGraph 提供：
+项目使用现有的 [LangGraph](https://github.com/langchain-ai/langgraph) 状态图框架。LangGraph 提供：
 
 - 并行节点和汇合依赖；
 - 根据校验结果选择结束或重试；
 - SQLite Checkpoint，可保存每一步图状态；
 - 稳定的节点边界，便于以后替换 Agent 实现。
-
-LangGraph 本身不提供识别模型，也不要求 Anthropic、OpenAI 或其他云端模型密钥。官方教程中的 Anthropic Key 只用于调用 Claude 示例。本项目的 `asr` 节点调用本地 `QwenASRService`，图编排、Checkpoint 和测试均可离线运行。
 
 ## 当前能力
 
@@ -87,7 +85,6 @@ flowchart TD
 | `QwenASRService` | ASR 参数 | `TranscriptCandidate` | 懒加载模型、限制 GPU 并发并转换官方返回格式 |
 | `SqliteRunRepository` | 节点事件 | `NodeRunRecord` | 记录节点状态、耗时、attempt 和错误 |
 
-Qwen3-ASR 是当前唯一使用 GPU 的大模型。其他 Agent 的基础实现运行在 CPU 上，增加 Agent 不会复制一份 Qwen 权重。后续接入说话人或场景模型时，应按显存和内存预算选择轻量模型并保持懒加载。
 
 ## 两类 SQLite 状态
 
@@ -138,14 +135,14 @@ src/multi_agent_asr/
 首次初始化可从已验证的 Qwen3-ASR 环境克隆：
 
 ```bash
-cd /home/jiangsongbo/multi-agent-asr
+cd ./multi-agent-asr
 bash scripts/bootstrap_wsl.sh
 ```
 
 进入环境并安装当前项目依赖：
 
 ```bash
-source /home/jiangsongbo/miniforge3/etc/profile.d/conda.sh
+source ./miniforge3/etc/profile.d/conda.sh
 conda activate multi-agent-asr
 python -m pip install -e ".[dev]"
 ```
@@ -160,8 +157,8 @@ cp .env.example .env
 
 ```text
 MASR_ASR_MODEL_PATH=Qwen/Qwen3-ASR-0.6B
-MASR_DATABASE_PATH=/home/jiangsongbo/data/multi-agent-asr/state/memory.sqlite3
-MASR_CHECKPOINT_DATABASE_PATH=/home/jiangsongbo/data/multi-agent-asr/state/checkpoints.sqlite3
+MASR_DATABASE_PATH=./data/multi-agent-asr/state/memory.sqlite3
+MASR_CHECKPOINT_DATABASE_PATH=./data/multi-agent-asr/state/checkpoints.sqlite3
 MASR_MAX_ASR_RETRIES=1
 ```
 
@@ -249,10 +246,3 @@ multi-agent-asr transcribe \
   --language Chinese
 ```
 
-## 扩展原则
-
-- 新的模型适配放入 `services/`，图的流程判断放入 `graph/`。
-- Agent 之间只交换 `schemas/models.py` 中定义的结构化对象。
-- 上下文可帮助消歧，但不能覆盖音频证据。
-- 说话人、场景、校验或新 ASR 实现应替换对应节点依赖，无需重写整个状态图。
-- 新增条件分支时同时增加路由测试、Checkpoint 测试和节点记录断言。
