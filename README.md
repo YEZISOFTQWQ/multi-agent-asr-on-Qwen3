@@ -2,13 +2,6 @@
 
 这是一个建立在 Qwen3-ASR 之上的本地多智能体语音识别项目。系统使用 LangGraph 编排五个具有明确决策职责的 Agent，并使用确定性工具完成音频处理、上下文渲染、术语替换、质量检查和持久化。
 
-详细技术方案见 [`docs/agent-architecture.md`](docs/agent-architecture.md)，Agent 源码说明见
-[`src/multi_agent_asr/agents/README.md`](src/multi_agent_asr/agents/README.md)，结构化日志字段见
-[`docs/agent-log-format.md`](docs/agent-log-format.md)。完整实现、环境和能力边界见
-[`docs/technical-report.md`](docs/technical-report.md)，真实 FLEURS 小样本结果见
-[`docs/qualitative-test-report.md`](docs/qualitative-test-report.md)，针对每个 Agent 的分支与
-作用测试见 [`docs/agent-effect-test-report.md`](docs/agent-effect-test-report.md)。
-
 ## 五个 Agent
 
 | Agent | 目标 | 主要动作 |
@@ -131,29 +124,7 @@ python scripts/smoke_test.py
 
 测试使用假 ASR 服务，不下载或加载模型。
 
-## 真实小样本定性评估
 
-把 FLEURS `cmn_hans_cn` 验证样本及清单放入
-`data/evaluation/fleurs-cmn-hans-cn/`，然后运行：
-
-```bash
-python scripts/run_qualitative_evaluation.py
-```
-
-脚本只使用三条公开语音，在同一进程内复用 Qwen3-ASR，运行标准基线、同音频上下文
-对照、个性化上下文和双声道降混四个用例。每个用例的结果、耗时、显存和完整 Agent
-日志保存在 `runs/evaluations/<UTC时间>/qualitative-evidence.json`。`data/` 中的音频和
-`runs/` 中的运行证据均被 Git 忽略。
-
-需要主动触发每个 Agent 的作用分支时运行：
-
-```bash
-python scripts/run_agent_effect_evaluation.py
-```
-
-该脚本使用同一条“迦南”语音测试正确上下文、错误上下文和说话人画像，并补充零帧拒绝、
-真实静音、Review 重试以及上下文预算用例。脚本会明确区分真实 Qwen 推理和受控控制流
-测试。
 
 ## 启动 API
 
