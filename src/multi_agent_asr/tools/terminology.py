@@ -1,4 +1,4 @@
-"""应用说话人画像中已经确认的术语纠错。"""
+"""应用已经确认的确定性术语纠错。"""
 
 from __future__ import annotations
 
@@ -8,15 +8,15 @@ from collections import Counter
 from multi_agent_asr.schemas import AppliedCorrection, SpeakerProfile, TranscriptCandidate
 
 
-class TerminologyAgent:
-    """只应用记忆中已经明确确认的说话人专属纠错。"""
+class TerminologyCorrector:
+    """使用单次最长匹配应用说话人画像中的确认纠错。"""
 
     async def apply(
         self,
         candidate: TranscriptCandidate,
         profile: SpeakerProfile | None,
     ) -> TranscriptCandidate:
-        """使用单次最长匹配应用画像中已经确认的纠错。"""
+        """执行非级联替换并保留命中次数审计。"""
         if profile is None or not candidate.text or not profile.corrections:
             return candidate
 
@@ -28,13 +28,14 @@ class TerminologyAgent:
         if not replacements:
             return candidate
 
-        # 长词优先避免较短前缀抢先命中；单次正则替换也阻止替换结果级联。
+        # 长词优先防止短词先命中并破坏更具体的术语。例如同时配置
+        # “千问”和“千问语音”时，后者应作为一个整体匹配。
         originals = sorted(replacements, key=len, reverse=True)
         pattern = re.compile("|".join(re.escape(original) for original in originals))
         counts: Counter[str] = Counter()
 
+        # re.sub 单次扫描原文本，replacement 不会再次进入匹配，实现非级联替换。
         def replace(match: re.Match[str]) -> str:
-            """记录命中次数并返回当前原词对应的替换文本。"""
             original = match.group(0)
             counts[original] += 1
             return replacements[original]

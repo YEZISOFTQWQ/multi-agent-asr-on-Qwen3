@@ -39,6 +39,10 @@ class Settings(BaseSettings):
     recent_utterance_limit: int = 5
     max_context_chars: int = 2000
     max_asr_retries: int = 1
+    supervisor_max_steps: int = 16
+    audio_agent_max_steps: int = 3
+    context_agent_max_steps: int = 2
+    min_speaker_confidence: float = 0.5
 
     def ensure_runtime_directories(self) -> None:
         """创建应用运行时需要的所有目录，重复调用是安全的。"""

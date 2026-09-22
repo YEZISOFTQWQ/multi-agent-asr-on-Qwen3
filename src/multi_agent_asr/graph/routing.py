@@ -1,15 +1,12 @@
-"""定义 LangGraph 的条件分支规则。"""
+"""定义 Supervisor 决策到 LangGraph 节点的路由。"""
 
 from __future__ import annotations
 
-from typing import Literal
+from multi_agent_asr.schemas import SupervisorAction
 
 from .state import ASRGraphState
 
 
-def route_after_verification(state: ASRGraphState) -> Literal["retry", "finalize"]:
-    """在校验通过或耗尽额度时结束，否则进入重试节点。"""
-    verification = state["verification"]
-    if verification.verified or state.get("retry_count", 0) >= state.get("max_retries", 0):
-        return "finalize"
-    return "retry"
+def route_supervisor(state: ASRGraphState) -> SupervisorAction:
+    """返回 Supervisor 已选择的下一动作。"""
+    return state["supervisor_decision"].action

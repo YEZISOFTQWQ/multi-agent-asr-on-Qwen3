@@ -48,6 +48,7 @@ async def health(request: Request) -> dict[str, object]:
         "model_loaded": qwen_service.is_loaded,
         "device_map": settings.device_map,
         "orchestration": "langgraph",
+        "agent_architecture": "supervisor",
     }
 
 
@@ -71,10 +72,19 @@ async def get_run(run_id: str, request: Request) -> list[NodeRunRecord]:
     return records
 
 
+@app.get("/v1/runs/{run_id}/agent-logs", response_model=list[NodeRunRecord])
+async def get_agent_logs(run_id: str, request: Request) -> list[NodeRunRecord]:
+    """按执行顺序返回指定运行中的五类 Agent 日志。"""
+    records = await request.app.state.orchestrator.list_node_runs(run_id)
+    if not records:
+        raise HTTPException(status_code=404, detail="Run not found")
+    return [record for record in records if record.details.get("agent")]
+
+
 @app.get("/v1/profiles/{speaker_id}", response_model=SpeakerProfile)
 async def get_profile(speaker_id: str, request: Request) -> SpeakerProfile:
     """读取指定说话人的长期画像。"""
-    profile = await request.app.state.orchestrator.memory_agent.get_profile(speaker_id)
+    profile = await request.app.state.orchestrator.context_selection_agent.get_profile(speaker_id)
     if profile is None:
         raise HTTPException(status_code=404, detail="Speaker profile not found")
     return profile
@@ -89,4 +99,4 @@ async def put_profile(
     """创建或替换指定说话人的长期画像。"""
     if speaker_id != profile.speaker_id:
         raise HTTPException(status_code=400, detail="speaker_id does not match request path")
-    return await request.app.state.orchestrator.memory_agent.upsert_profile(profile)
+    return await request.app.state.orchestrator.context_selection_agent.upsert_profile(profile)
