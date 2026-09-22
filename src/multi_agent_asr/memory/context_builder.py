@@ -20,7 +20,17 @@ class ContextBuilder:
         recent_utterances: list[str],
         explicit_context: str | None = None,
     ) -> str:
-        """按固定优先级组合可用线索，并严格截断到字符预算。"""
+        """按固定优先级组合可用线索，并严格截断到字符预算。
+
+        Args:
+            profile: 已通过身份置信度筛选的说话人画像。
+            scene: 当前录音场景观察。
+            recent_utterances: 按自然对话顺序排列的已验证历史文本。
+            explicit_context: 用户为本次任务提供的补充信息。
+
+        Returns:
+            以安全指令开头且不超过 `max_chars` 的模型上下文。
+        """
         # 安全约束始终放在首段，所有个性化信息都只能帮助消歧。
         sections: list[str] = [
             "请以音频内容为主要依据。上下文仅用于消除歧义，不要添加音频中没有的信息。"

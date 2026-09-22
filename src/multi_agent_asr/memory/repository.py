@@ -12,7 +12,11 @@ from multi_agent_asr.schemas import ASRResult, SpeakerProfile
 
 
 class SqliteMemoryRepository:
-    """持久化说话人画像和按会话组织的转写历史。"""
+    """持久化说话人画像和按会话组织的转写历史。
+
+    公共异步方法把 sqlite3 的阻塞操作移到工作线程。每个同步操作创建
+    独立短连接，并依靠连接上下文在成功时提交、异常时回滚。
+    """
 
     def __init__(self, database_path: Path) -> None:
         """保存业务记忆数据库路径。"""
@@ -93,6 +97,8 @@ class SqliteMemoryRepository:
     def _upsert_profile_sync(self, profile: SpeakerProfile) -> SpeakerProfile:
         """在一个事务中写入完整画像快照。"""
         updated_at = datetime.now(UTC)
+        # 画像采用完整快照覆盖语义，避免列表和纠错映射在多次 PUT 后
+        # 意外累加旧值。
         with self._connect() as connection:
             connection.execute(
                 """

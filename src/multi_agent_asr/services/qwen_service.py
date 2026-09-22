@@ -58,6 +58,8 @@ class QwenASRService:
                 "max_inference_batch_size": self.settings.max_inference_batch_size,
                 "max_new_tokens": self.settings.max_new_tokens,
             }
+            # 强制对齐器是可选的独立模型；只有配置路径后才加载，以减少
+            # 不需要时间戳时的显存和启动成本。
             if self.settings.forced_aligner_model_path:
                 kwargs["forced_aligner"] = self.settings.forced_aligner_model_path
                 kwargs["forced_aligner_kwargs"] = {

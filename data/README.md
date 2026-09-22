@@ -1,9 +1,9 @@
 # Data directory
 
-此目录只保留说明文件。实际音频和数据库默认存放在：
+此目录只保留说明文件。使用仓库内相对路径配置时，实际音频和数据库存放在：
 
 ```text
-/home/jiangsongbo/data/multi-agent-asr/
+./data/
 ```
 
 推荐子目录：
