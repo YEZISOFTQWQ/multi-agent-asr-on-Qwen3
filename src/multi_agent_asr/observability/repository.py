@@ -103,13 +103,19 @@ class SqliteRunRepository:
             )
             return int(cursor.lastrowid)
 
-    async def finish_node(self, node_run_id: int, duration_ms: float) -> None:
-        """把节点记录更新为成功并保存耗时。"""
+    async def finish_node(
+        self,
+        node_run_id: int,
+        duration_ms: float,
+        details: dict[str, object],
+    ) -> None:
+        """把节点记录更新为成功，并保存耗时和最终结构化日志。"""
         await asyncio.to_thread(
             self._finish_node_sync,
             node_run_id,
             "succeeded",
             duration_ms,
+            details,
             None,
         )
 
@@ -117,14 +123,16 @@ class SqliteRunRepository:
         self,
         node_run_id: int,
         duration_ms: float,
+        details: dict[str, object],
         error: BaseException,
     ) -> None:
-        """把节点记录更新为失败并保存异常摘要。"""
+        """把节点记录更新为失败，并保存已产生的日志和异常摘要。"""
         await asyncio.to_thread(
             self._finish_node_sync,
             node_run_id,
             "failed",
             duration_ms,
+            details,
             f"{type(error).__name__}: {error}",
         )
 
@@ -133,20 +141,22 @@ class SqliteRunRepository:
         node_run_id: int,
         status: str,
         duration_ms: float,
+        details: dict[str, object],
         error: str | None,
     ) -> None:
-        """同步完成节点记录的终态更新。"""
+        """同步完成节点记录，并用执行后的结构化日志覆盖初始明细。"""
         with self._connect() as connection:
             connection.execute(
                 """
                 UPDATE node_runs
-                SET status = ?, finished_at = ?, duration_ms = ?, error = ?
+                SET status = ?, finished_at = ?, duration_ms = ?, details_json = ?, error = ?
                 WHERE id = ?
                 """,
                 (
                     status,
                     datetime.now(UTC).isoformat(),
                     duration_ms,
+                    json.dumps(details, ensure_ascii=False),
                     error,
                     node_run_id,
                 ),
@@ -191,22 +201,36 @@ class SqliteRunRepository:
         node_name: str,
         attempt: int,
         details: dict[str, object] | None = None,
-    ) -> AsyncIterator[None]:
-        """在异步上下文中自动记录节点成功、失败和耗时。"""
+    ) -> AsyncIterator[dict[str, object]]:
+        """在异步上下文中记录状态、耗时和执行期间追加的结构化日志。
+
+        上下文返回一个可变字典。节点可以在执行期间追加 observation、
+        decision 和 trace；退出上下文时，字典的最终内容会写回同一条记录。
+        """
+        runtime_details = details if details is not None else {}
         node_run_id = await self.start_node(
             run_id=run_id,
             thread_id=thread_id,
             node_name=node_name,
             attempt=attempt,
-            details=details,
+            details=runtime_details,
         )
         # perf_counter 不受系统时钟校准影响，适合计算节点耗时。
         started = perf_counter()
         try:
-            yield
+            yield runtime_details
         except BaseException as error:
             # 取消等控制流异常也要留下失败记录，随后原样抛给 LangGraph。
-            await self.fail_node(node_run_id, (perf_counter() - started) * 1000, error)
+            await self.fail_node(
+                node_run_id,
+                (perf_counter() - started) * 1000,
+                runtime_details,
+                error,
+            )
             raise
         else:
-            await self.finish_node(node_run_id, (perf_counter() - started) * 1000)
+            await self.finish_node(
+                node_run_id,
+                (perf_counter() - started) * 1000,
+                runtime_details,
+            )

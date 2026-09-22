@@ -1,4 +1,4 @@
-"""定义 API、Agent、图状态和持久化层共享的数据契约。"""
+"""定义 API、工作流和持久化层共享的核心数据契约。"""
 
 from __future__ import annotations
 
@@ -75,7 +75,7 @@ class TranscriptionInput(BaseModel):
 
 
 class TranscriptCandidate(BaseModel):
-    """ASR 输出及后处理 Agent 共享的候选文本。"""
+    """ASR 输出及后处理组件共享的候选文本。"""
 
     text: str
     language: str | None = None

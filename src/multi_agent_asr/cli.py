@@ -14,7 +14,7 @@ from multi_agent_asr.schemas import TranscriptionInput
 
 
 def _parser() -> argparse.ArgumentParser:
-    """构建 init-db、serve 和 transcribe 子命令。"""
+    """构建初始化、服务、转写和 Agent 日志子命令。"""
     parser = argparse.ArgumentParser(description="Multi-Agent ASR command line")
     commands = parser.add_subparsers(dest="command", required=True)
 
@@ -29,6 +29,12 @@ def _parser() -> argparse.ArgumentParser:
     transcribe.add_argument("--language")
     transcribe.add_argument("--context")
     transcribe.add_argument("--timestamps", action="store_true")
+
+    agent_log = commands.add_parser(
+        "agent-log",
+        help="Show structured agent logs for one run",
+    )
+    agent_log.add_argument("run_id", help="run_id returned by transcribe")
     return parser
 
 
@@ -62,6 +68,26 @@ async def _transcribe(args: argparse.Namespace) -> None:
         await orchestrator.close()
 
 
+async def _agent_log(args: argparse.Namespace) -> None:
+    """按时间顺序输出一次运行中所有 Agent 的结构化日志。"""
+    orchestrator, _ = build_orchestrator(get_settings())
+    try:
+        await orchestrator.initialize()
+        records = await orchestrator.list_node_runs(args.run_id)
+        agent_records = [record for record in records if record.details.get("agent")]
+        if not agent_records:
+            raise SystemExit(f"No agent logs found for run_id: {args.run_id}")
+        print(
+            json.dumps(
+                [record.model_dump(mode="json") for record in agent_records],
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
+    finally:
+        await orchestrator.close()
+
+
 def main() -> None:
     """解析命令行参数并分派到对应子命令。"""
     args = _parser().parse_args()
@@ -77,6 +103,8 @@ def main() -> None:
         )
     elif args.command == "transcribe":
         asyncio.run(_transcribe(args))
+    elif args.command == "agent-log":
+        asyncio.run(_agent_log(args))
 
 
 if __name__ == "__main__":
